@@ -1,0 +1,187 @@
+﻿<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+    <script src="http://maps.googleapis.com/maps/api/js?sensor=false" type="text/javascript"></script>
+    <link rel="stylesheet" type="text/css" href="project_layout.css">
+
+    <!--jQuery Accordion-->
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.10.4/themes/smoothness/jquery-ui.css">
+    <script src="//code.jquery.com/jquery-1.10.2.js"></script>
+    <script src="//code.jquery.com/ui/1.10.4/jquery-ui.js"></script>
+
+    <title>Healthy Food in Charlotte: Using Google Maps to Locate Farmers' Markets</title>
+    <script type="text/javascript">
+
+    var map;
+    var markers = [];
+    var infoWindow;
+    var userLocation;
+	
+    $(function() {
+     $( "#accordion" ).accordion({
+	  active: false,
+	  collapsible: true
+     })
+    });
+	
+    function init() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: new google.maps.LatLng(35.203, -80.839),
+        zoom: 10,
+        mapTypeId: 'roadmap',
+      });
+      infoWindow = new google.maps.InfoWindow();
+	  var blankAccordion = "<h3>Markets</h3><div><p>Farmers' Markets that fall within the selected search area will be displayed here.</p></div>";
+	  $( "#accordion" ).append(blankAccordion);
+	  $( "#accordion" ).accordion({ heightStyle: "content" });
+	  $( "#accordion" ).accordion( "refresh" );
+    }
+
+   function searchLocations() {
+     var address = document.getElementById("addressInput").value;
+     var geocoder = new google.maps.Geocoder();
+     geocoder.geocode({address: address}, function(results, status) {
+       if (status == google.maps.GeocoderStatus.OK) {
+        searchLocationsNear(results[0].geometry.location);
+        var userLocation = results[0].geometry.location;
+       } else {
+         alert(address + ' not found');
+       }
+     });
+   }
+
+   function clearLocations() {
+     infoWindow.close();
+     for (var i = 0; i < markers.length; i++) {
+       markers[i].setMap(null);
+     }
+     markers.length = 0;
+	 $( "#accordion" ).empty();
+   }
+
+   function searchLocationsNear(center) {
+     clearLocations();
+	 //User Location Marker
+	 var userInfo = "<b>Your Location</b>";
+     var userMarker = new google.maps.Marker({
+       map: map,h1       position: center,
+	   icon: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png'
+     });
+	 infoWindow.setContent(userInfo);
+     infoWindow.open(map, userMarker);
+     markers.push(userMarker);
+	 google.maps.event.addListener(userMarker, 'click', function() {
+      infoWindow.setContent(userInfo);
+      infoWindow.open(map, userMarker);
+     });
+     markers.push(userMarker);
+     //Build Market Info
+     var radius = document.getElementById('radiusSelect').value;
+     var searchUrl = 'phpsqlsearch_genxml.php?lat=' + center.lat() + '&lng=' + center.lng() + '&radius=' + radius;
+     downloadUrl(searchUrl, function(data) {
+       var xml = parseXml(data);
+       var markerNodes = xml.documentElement.getElementsByTagName("marker");
+       var bounds = new google.maps.LatLngBounds();
+       for (var i = 0; i < markerNodes.length; i++) {
+         var name = markerNodes[i].getAttribute("name");
+         var address = markerNodes[i].getAttribute("street");
+         var city = markerNodes[i].getAttribute("city");
+         var zipcode = markerNodes[i].getAttribute("zipcode");
+	     var openmonth = markerNodes[i].getAttribute("openmonth");
+	     var openday = markerNodes[i].getAttribute("openday");
+	     var lettuce = markerNodes[i].getAttribute("lettuce");
+	     var tomato = markerNodes[i].getAttribute("tomato");
+	     var berries = markerNodes[i].getAttribute("berries");
+	     var seafood = markerNodes[i].getAttribute("seafood");
+    	 var poultry = markerNodes[i].getAttribute("poultry");
+	     var beef = markerNodes[i].getAttribute("beef");
+	     var eggs = markerNodes[i].getAttribute("eggs");
+         var distance = parseFloat(markerNodes[i].getAttribute("distance"));
+         var latlng = new google.maps.LatLng(
+              parseFloat(markerNodes[i].getAttribute("lat")),
+              parseFloat(markerNodes[i].getAttribute("lng")));
+         //Accordion menu
+         var newHead = "<h3>" + name + "</h3>";
+         var newContent = "<div id='accordionContent'><br>" + address + ", " + city + " " + zipcode + "<br>Distance: " + distance.toFixed(1) + " miles<br><br><b>Operating Hours:</b><br>Months Open: " + openmonth + "<br>Days Open: " + openday + "<br><br><b>Products:</b><br>Lettuce: " + lettuce + "<br>Tomatoes: " + tomato + "<br>Berries: " + berries + "<br>Seafood: " + seafood + "<br>Poultry: " + poultry + "<br>Beef: " + beef + "<br>Eggs: " + eggs + "</div>";
+         var newDiv = newHead + newContent;
+         $('#accordion').append(newDiv);
+         $('#accordion').accordion("refresh");
+         createMarker(latlng, name, address);
+         bounds.extend(latlng);
+       }	   
+       if (i > 0) {
+        map.fitBounds(bounds);
+       }
+       else {
+        map.setCenter(35.203, -80.839);
+       }
+      });
+    }
+
+    function createMarker(latlng, name, address) {
+      var html = "<b>" + name + "</b> <br/>" + address;
+      var marker = new google.maps.Marker({
+        map: map,
+        position: latlng
+      });
+      google.maps.event.addListener(marker, 'click', function() {
+        infoWindow.setContent(html);
+        infoWindow.open(map, marker);
+      });
+      markers.push(marker);
+    }
+
+    function downloadUrl(url, callback) {
+      var request = window.ActiveXObject ?
+          new ActiveXObject('Microsoft.XMLHTTP') :
+          new XMLHttpRequest;
+
+      request.onreadystatechange = function() {
+        if (request.readyState == 4) {
+          request.onreadystatechange = doNothing;
+          callback(request.responseText, request.status);
+        }
+      };
+
+      request.open('GET', url, true);
+      request.send(null);
+    }
+
+    function parseXml(str) {
+      if (window.ActiveXObject) {
+        var doc = new ActiveXObject('Microsoft.XMLDOM');
+        doc.loadXML(str);
+        return doc;
+      } else if (window.DOMParser) {
+        return (new DOMParser).parseFromString(str, 'text/xml');
+      }
+    }
+
+    function doNothing() {}
+
+  </script>
+  </head>
+  <body onload="init()">
+   <br>
+   <h2>Healthy Food in Charlotte: Using Google Maps to Locate Farmers' Markets</h2>
+   <div id="contents">
+    <span style="color:#FFFFFF">
+     <br>
+     Your Address:
+     <input type="text" id="addressInput" size="30" value="28223"/>
+     Search Radius:
+     <input type="text" id="radiusSelect" size="10" value="15"/>
+     miles
+    </span>
+    <input type="button" onclick="searchLocations()" value="Search"/>
+    <div>
+     <div id="accordion"></div>
+     <div id="map"></div>
+    </div>
+   </div>
+   <br>
+   <img src="http://www.uncc.edu/sites/all/themes/unc_charlotte/logo.png" alt="UNC Charlotte">
+   <h4>Derek Marsh<br>WebGIS Spring 2014</h4>
+  </body>
+</html>
